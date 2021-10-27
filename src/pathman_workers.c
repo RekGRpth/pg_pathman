@@ -57,8 +57,8 @@ extern PGDLLEXPORT void bgw_main_concurrent_part(Datum main_arg);
 
 static void handle_sigterm(SIGNAL_ARGS);
 static void bg_worker_load_config(const char *bgw_name);
-static bool start_bgworker(const char bgworker_name[BGW_MAXLEN],
-							const char bgworker_proc[BGW_MAXLEN],
+static bool start_bgworker(const char *bgworker_name,
+							const char *bgworker_proc,
 							Datum bgw_arg, bool wait_for_shutdown);
 
 
@@ -166,8 +166,8 @@ bg_worker_load_config(const char *bgw_name)
  * Common function to start background worker.
  */
 static bool
-start_bgworker(const char bgworker_name[BGW_MAXLEN],
-				const char bgworker_proc[BGW_MAXLEN],
+start_bgworker(const char *bgworker_name,
+				const char *bgworker_proc,
 				Datum bgw_arg, bool wait_for_shutdown)
 {
 #define HandleError(condition, new_state) \
@@ -195,6 +195,9 @@ start_bgworker(const char bgworker_name[BGW_MAXLEN],
 	snprintf(worker.bgw_library_name, BGW_MAXLEN, "pg_pathman");
 
 	worker.bgw_flags			= BGWORKER_SHMEM_ACCESS |
+#if defined(PGPRO_EE) && PG_VERSION_NUM >= 130000 && PG_VERSION_NUM < 140000 /* FIXME: need to remove last condition in future */
+									BGWORKER_CLASS_PERSISTENT |
+#endif
 									BGWORKER_BACKEND_DATABASE_CONNECTION;
 	worker.bgw_start_time		= BgWorkerStart_RecoveryFinished;
 	worker.bgw_restart_time		= BGW_NEVER_RESTART;
