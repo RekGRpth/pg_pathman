@@ -180,6 +180,7 @@ partition_router_exec(CustomScanState *node)
 	PartitionRouterState   *state = (PartitionRouterState *) node;
 	TupleTableSlot		   *slot;
 	bool					should_process;
+	Oid						resultoid = InvalidOid;
 
 take_next_tuple:
 	/* Get next tuple for processing */
@@ -207,21 +208,45 @@ take_next_tuple:
 		if (state->junkfilter == NULL)
 			state->junkfilter = state->current_rri->ri_junkFilter;
 #else
-		if (slot->tts_tableOid == InvalidOid)
-			elog(ERROR, "invalid table OID in returned tuple");
+		/*
+		 * When there are multiple result relations, each tuple contains a
+		 * junk column that gives the OID of the rel from which it came.
+		 * Extract it and select the correct result relation. See function
+		 * expand_single_inheritance_child and TableOidAttributeNumber.
+		 */
+		if (AttributeNumberIsValid(state->mt_state->mt_resultOidAttno))
+		{
+			Datum		datum;
+			bool		isNull;
+
+			datum = ExecGetJunkAttribute(slot,
+										 state->mt_state->mt_resultOidAttno,
+										 &isNull);
+			if (!isNull)
+				resultoid = DatumGetObjectId(datum);
+		}
+
+		if (!OidIsValid(resultoid))
+		{
+			/* In case slot not contain TableOidAttributeNumber. */
+			if (OidIsValid(slot->tts_tableOid))
+				resultoid = slot->tts_tableOid;
+			else
+				elog(ERROR, "invalid table OID in returned tuple");
+		}
 
 		/*
 		 * For 14: in case UPDATE command we can scanning several partitions
 		 * in one plan. Need to switch context each time partition is switched.
 		 */
-		if (RelationGetRelid(state->current_rri->ri_RelationDesc) != slot->tts_tableOid)
+		if (RelationGetRelid(state->current_rri->ri_RelationDesc) != resultoid)
 		{
 			/*
 			 * Function router_get_slot() switched to new partition: need to
 			 * reinitialize some PartitionRouterState variables
 			 */
 			state->current_rri = ExecLookupResultRelByOid(state->mt_state,
-														  slot->tts_tableOid, false, false);
+														  resultoid, false, false);
 			partition_changed = true;
 		}
 #endif
