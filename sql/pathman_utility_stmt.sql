@@ -75,6 +75,7 @@ test_no_part
 
 /* COPY FROM (we don't support FREEZE) */
 COPY copy_stmt_hooking.test FROM stdin WITH (FREEZE);
+\.
 
 
 /* Drop column (make use of 'tuple_map') */
